@@ -1,16 +1,22 @@
-// app/bot.js
+// app/bot.js — Telegraf через webhook, без polling
 const { Telegraf } = require('telegraf');
-const axios = require('axios');
 const { togglePick, getPicks } = require('./lib/store');
+const axios = require('axios');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
   console.log('[bot] no TELEGRAM_BOT_TOKEN provided — bot disabled');
+  module.exports = null;
   return;
 }
 
 const BASE = process.env.BASE_URL || '';
 if (!BASE) console.log('[bot] BASE_URL is empty — API calls will fail');
+
+// Секретный путь вебхука (можно задать TG_SECRET_PATH в Env)
+const secretPath =
+  process.env.TG_SECRET_PATH ||
+  `/tg-${Buffer.from(token).toString('base64url').slice(0, 24)}`;
 
 const api = (p, d) => axios.post(`${BASE}${p}`, d).then(r => r.data);
 const get = (p) => axios.get(`${BASE}${p}`).then(r => r.data);
@@ -18,21 +24,26 @@ const get = (p) => axios.get(`${BASE}${p}`).then(r => r.data);
 const bot = new Telegraf(token);
 const S = new Map();
 
-// /start или /new — запускаем мастер
+// /start
 bot.start(ctx => {
   const id = ctx.chat.id;
   S.set(id, { step: 'character' });
   ctx.reply('Кого берём? (персонаж/актёр)');
 });
-bot.command('new', ctx => bot.telegram.emit('text', { ...ctx.message, text: '/start' }));
 
-// Обработка шагов
+// /new
+bot.command('new', ctx => {
+  const id = ctx.chat.id;
+  S.set(id, { step: 'character' });
+  ctx.reply('Кого берём? (персонаж/актёр)');
+});
+
+// шаги диалога
 bot.on('text', async (ctx) => {
   const id = ctx.chat.id;
-  const s = S.get(id);
   const text = (ctx.message.text || '').trim();
-
-  if (!s) return; // нет активной сессии
+  let s = S.get(id);
+  if (!s) return;
 
   if (s.step === 'character') {
     s.character = text;
@@ -57,7 +68,6 @@ bot.on('text', async (ctx) => {
       });
       s.job_id = job_id;
 
-      // пулим статус
       const t = setInterval(async () => {
         try {
           const st = await get(`/status?job_id=${job_id}`);
@@ -74,7 +84,6 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // если ждём выбор — принимаем числа 1..15
   if (s.step === 'wait') {
     const n = parseInt(text, 10);
     if (!Number.isInteger(n) || n < 1 || n > 15) return;
@@ -88,7 +97,6 @@ bot.command('rec', async (ctx) => {
   const id = ctx.chat.id;
   const s = S.get(id);
   if (!s?.job_id) return ctx.reply('Сначала /start');
-  // сбросим предыдущие и выберем 1..7
   for (let i = 1; i <= 7; i++) await togglePick(s.job_id, i);
   ctx.reply('Рекомендовал 7. Жми /final');
 });
@@ -102,9 +110,7 @@ bot.command('final', async (ctx) => {
   if (picks.length !== 7) return ctx.reply(`Нужно 7, выбрано ${picks.length}`);
   try {
     const out = await api('/finalize', { job_id: s.job_id, picks, want_caption: true });
-    for (const url of out.slides) {
-      await ctx.replyWithPhoto(url);
-    }
+    for (const url of out.slides) await ctx.replyWithPhoto(url);
     await ctx.reply(`Подпись:\n${out.caption}`);
     S.delete(id);
   } catch (e) {
@@ -112,16 +118,4 @@ bot.command('final', async (ctx) => {
   }
 });
 
-// без конфликтов polling
-(async () => {
-  try {
-    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-    await bot.launch({ dropPendingUpdates: true });
-    console.log('[bot] launched (polling)');
-  } catch (e) {
-    console.error('[bot] launch error:', e.message);
-  }
-})();
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+module.exports = { bot, secretPath };
