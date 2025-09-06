@@ -8,6 +8,23 @@ const { createJobRecord, setPreview, getStatus, getPreview, getPicks } = require
 const { renderFinalSlides, genCaption } = require('./lib/render');
 
 const app = express();
+// === Telegram webhook ===
+let botModule;
+try { botModule = require('./bot.js'); } catch (_) {}
+if (botModule && botModule.bot && botModule.secretPath) {
+  const { bot, secretPath } = botModule;
+  const base = process.env.BASE_URL;
+  if (!base) {
+    console.log('[bot] BASE_URL is empty — webhook not set');
+  } else {
+    const url = base + secretPath;
+    bot.telegram.setWebhook(url)
+      .then(() => console.log('[bot] webhook set to', url))
+      .catch(e => console.error('[bot] setWebhook error:', e.message));
+    app.use(secretPath, bot.webhookCallback(secretPath));
+  }
+}
+
 app.use(express.json());
 
 // ===== Redis + BullMQ общие опции Upstash/TLS =====
