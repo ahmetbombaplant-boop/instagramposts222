@@ -36,7 +36,7 @@ services:
 - type: worker
   name: sigma-bot
   env: node
-  plan: starter
+  plan: free
   buildCommand: "npm install"
   startCommand: "node app/bot.js"
   envVars:
@@ -46,3 +46,4 @@ services:
     sync: false
   - key: REDIS_URL
     sync: false
+
