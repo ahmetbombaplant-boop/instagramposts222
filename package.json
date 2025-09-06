@@ -1,25 +1,19 @@
 {
   "name": "sigma-pack",
   "version": "1.0.0",
-  "type": "module",
-  "description": "Telegram bot + API to search 15 -> pick 7 aesthetic images and finalize a pack.",
-  "main": "app/server.js",
+  "main": "app/all-in-one.js",
   "scripts": {
-    "dev": "nodemon app/server.js",
-    "worker": "node app/worker.js",
-    "bot": "node app/bot.js"
+    "start": "node app/all-in-one.js"
   },
   "dependencies": {
     "axios": "^1.7.7",
     "bullmq": "^5.8.1",
+    "cloudinary": "^1.41.2",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "form-data": "^4.0.0",
     "ioredis": "^5.4.1",
-    "node-telegram-bot-api": "^0.66.0",
-    "sharp": "^0.33.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.4"
+    "sharp": "^0.33.3",
+    "telegraf": "^4.16.3"
   }
 }
