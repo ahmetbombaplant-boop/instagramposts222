@@ -1,37 +1,46 @@
-import sharp from 'sharp';
-import axios from 'axios';
-import FormData from 'form-data';
+// app/lib/render.js
+const axios = require('axios');
+const cloudinary = require('cloudinary').v2;
 
-// CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
-const cloud = process.env.CLOUDINARY_URL.split('@')[1];
-
-async function process(buf){
-  // подгон под 1080x1350 + лёгкий «киношный» обвес
-  return await sharp(buf)
-    .resize(1080,1350,{fit:'cover'})
-    .modulate({ saturation:0.12, brightness:1 })
-    .linear(1.1,-10)
-    .jpeg({quality:90})
-    .toBuffer();
+let cloudinaryReady = true;
+try {
+  cloudinary.config(true); // читает CLOUDINARY_URL
+} catch (e) {
+  cloudinaryReady = false;
+  console.log('[cloudinary] disabled:', e.message);
 }
 
-async function upload(buf,name){
-  const url=`https://api.cloudinary.com/v1_1/${cloud}/image/upload`;
-  const form=new FormData();
-  form.append('file',buf,{filename:name});
-  // ⚠️ Создай в Cloudinary unsigned preset с именем "unsigned"
-  form.append('upload_preset','unsigned');
-  const {data}=await axios.post(url,form,{headers:form.getHeaders()});
-  return data.secure_url;
-}
-
-export async function renderFinalSlides(selected){
-  const out=[];
-  for(let i=0;i<selected.length;i++){
-    const s=selected[i];
-    const raw=await axios.get(s.url,{responseType:'arraybuffer'}).then(r=>Buffer.from(r.data));
-    const buf=await process(raw);
-    out.push(await upload(buf,`slide_${i+1}.jpg`));
+/**
+ * Минимальный рендер: скачиваем и заливаем в Cloudinary (resize/cloud можно скрутить позже).
+ * Возвращаем массив secure_url.
+ */
+async function renderFinalSlides(selected) {
+  if (!cloudinaryReady) throw new Error('Cloudinary not configured');
+  const out = [];
+  for (let i = 0; i < selected.length; i++) {
+    const s = selected[i];
+    // Загружаем прямо по URL — Cloudinary сам скачает и сохранит
+    const r = await cloudinary.uploader.upload(s.url, {
+      folder: 'sigma-pack',
+      public_id: `slide_${Date.now()}_${i + 1}`,
+      overwrite: true,
+      transformation: [
+        { width: 1080, height: 1350, crop: "fill", gravity: "auto" },
+        { effect: "saturation:-20" }
+      ]
+    });
+    out.push(r.secure_url);
   }
   return out;
 }
+
+async function genCaption(selected) {
+  // базовая подпись — потом заменим на умную
+  return [
+    'По делу. Без позы.',
+    'Суть важнее формы.',
+    '#discipline #focus #sigma'
+  ].join('\n');
+}
+
+module.exports = { renderFinalSlides, genCaption };
