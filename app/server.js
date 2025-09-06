@@ -6,8 +6,15 @@ const cloudinary = require('cloudinary').v2;
 
 const app = express();
 
+// ===== Redis + BullMQ совместимые опции (Upstash/TLS) =====
+const redisOpts = {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  tls: { rejectUnauthorized: false }
+};
+
 // Redis соединение
-const redis = new IORedis(process.env.REDIS_URL);
+const redis = new IORedis(process.env.REDIS_URL, redisOpts);
 redis.on('connect', () => console.log('[api] Redis connected'));
 redis.on('error', (e) => console.error('[api] Redis error', e?.message));
 
@@ -16,7 +23,13 @@ const queueName = 'sigma-jobs';
 const queue = new Queue(queueName, { connection: redis });
 
 // Cloudinary из CLOUDINARY_URL (ключ/секрет возьмутся автоматически)
-cloudinary.config(true);
+let cloudinaryReady = true;
+try {
+  cloudinary.config(true);
+} catch (e) {
+  cloudinaryReady = false;
+  console.log('[cloudinary] disabled:', e.message);
+}
 
 // 1) Healthcheck API
 app.get('/', (req, res) => {
@@ -45,6 +58,9 @@ app.get('/health/queue', async (req, res) => {
 
 // 4) Тест Cloudinary — грузим публичную картинку и возвращаем URL
 app.get('/health/cloudinary', async (req, res) => {
+  if (!cloudinaryReady) {
+    return res.status(400).json({ ok: false, error: 'CLOUDINARY_URL invalid or missing' });
+  }
   try {
     const r = await cloudinary.uploader.upload(
       'https://res.cloudinary.com/demo/image/upload/sample.jpg',
