@@ -2,7 +2,7 @@ services:
 - type: web
   name: sigma-api
   env: node
-  plan: starter
+  plan: free
   buildCommand: "npm install"
   startCommand: "node app/server.js"
   envVars:
@@ -22,7 +22,7 @@ services:
 - type: worker
   name: sigma-worker
   env: node
-  plan: starter
+  plan: free
   buildCommand: "npm install"
   startCommand: "node app/worker.js"
   envVars:
@@ -46,4 +46,5 @@ services:
     sync: false
   - key: REDIS_URL
     sync: false
+
 
