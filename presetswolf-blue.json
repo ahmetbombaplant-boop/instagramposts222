@@ -1,0 +1,8 @@
+{
+  "name": "wolf-blue",
+  "palette": { "accent": "#2F7DFF", "text": "#0E0E0E", "bw": true },
+  "layout": { "safe": { "l": 80, "r": 80, "t": 90, "b": 170 }, "ribbon": { "h": 84, "gap": 18, "opacity": 0.82 } },
+  "fx": { "desaturate": 0.85, "contrast": 1.12, "grain": 0.06, "vignette": 0.28 },
+  "fonts": { "headline": "Montserrat-ExtraBold", "body": "Montserrat-SemiBold" },
+  "text_rules": { "uppercase": true, "accent_words": 2, "max_lines": 2, "tracking": 2 }
+}

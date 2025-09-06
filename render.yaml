@@ -1,0 +1,48 @@
+services:
+- type: web
+  name: sigma-api
+  env: node
+  plan: starter
+  buildCommand: "npm install"
+  startCommand: "node app/server.js"
+  envVars:
+  - key: PORT
+    value: 3000
+  - key: BASE_URL
+    sync: false
+  - key: REDIS_URL
+    sync: false
+  - key: CLOUDINARY_URL
+    sync: false
+  - key: SERPAPI_KEY
+    sync: false
+  - key: N8N_FINALIZE_WEBHOOK
+    sync: false
+
+- type: worker
+  name: sigma-worker
+  env: node
+  plan: starter
+  buildCommand: "npm install"
+  startCommand: "node app/worker.js"
+  envVars:
+  - key: REDIS_URL
+    sync: false
+  - key: CLOUDINARY_URL
+    sync: false
+  - key: SERPAPI_KEY
+    sync: false
+
+- type: worker
+  name: sigma-bot
+  env: node
+  plan: starter
+  buildCommand: "npm install"
+  startCommand: "node app/bot.js"
+  envVars:
+  - key: TELEGRAM_BOT_TOKEN
+    sync: false
+  - key: BASE_URL
+    sync: false
+  - key: REDIS_URL
+    sync: false
