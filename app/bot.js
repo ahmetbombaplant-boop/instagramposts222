@@ -1,4 +1,4 @@
-// app/bot.js — Telegraf через webhook, без polling
+// app/bot.js — Telegraf через webhook
 const { Telegraf } = require('telegraf');
 const { togglePick, getPicks } = require('./lib/store');
 const axios = require('axios');
@@ -11,9 +11,9 @@ if (!token) {
 }
 
 const BASE = process.env.BASE_URL || '';
-if (!BASE) console.log('[bot] BASE_URL is empty — API calls will fail');
+if (!BASE) console.log('[bot] BASE_URL is empty — API calls may fail');
 
-// Секретный путь вебхука (можно задать TG_SECRET_PATH в Env)
+// Секретный путь вебхука
 const secretPath =
   process.env.TG_SECRET_PATH ||
   `/tg-${Buffer.from(token).toString('base64url').slice(0, 24)}`;
@@ -118,4 +118,5 @@ bot.command('final', async (ctx) => {
   }
 });
 
-module.exports = { bot, secretPath };
+console.log(`[bot] initialized with webhook path ${secretPath}`);
+module.exports = { bot, secretPath, webhook: bot.webhookCallback(secretPath) };
