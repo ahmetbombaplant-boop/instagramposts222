@@ -1,4 +1,4 @@
-// app/bot.js — Telegraf через webhook
+// app/bot.js
 const { Telegraf } = require('telegraf');
 const { togglePick, getPicks } = require('./lib/store');
 const axios = require('axios');
@@ -11,9 +11,6 @@ if (!token) {
 }
 
 const BASE = process.env.BASE_URL || '';
-if (!BASE) console.log('[bot] BASE_URL is empty — API calls may fail');
-
-// Секретный путь вебхука
 const secretPath =
   process.env.TG_SECRET_PATH ||
   `/tg-${Buffer.from(token).toString('base64url').slice(0, 24)}`;
@@ -24,21 +21,18 @@ const get = (p) => axios.get(`${BASE}${p}`).then(r => r.data);
 const bot = new Telegraf(token);
 const S = new Map();
 
-// /start
 bot.start(ctx => {
   const id = ctx.chat.id;
   S.set(id, { step: 'character' });
   ctx.reply('Кого берём? (персонаж/актёр)');
 });
 
-// /new
 bot.command('new', ctx => {
   const id = ctx.chat.id;
   S.set(id, { step: 'character' });
   ctx.reply('Кого берём? (персонаж/актёр)');
 });
 
-// шаги диалога
 bot.on('text', async (ctx) => {
   const id = ctx.chat.id;
   const text = (ctx.message.text || '').trim();
@@ -92,7 +86,6 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// авто-рекомендация: первые 7
 bot.command('rec', async (ctx) => {
   const id = ctx.chat.id;
   const s = S.get(id);
@@ -101,7 +94,6 @@ bot.command('rec', async (ctx) => {
   ctx.reply('Рекомендовал 7. Жми /final');
 });
 
-// финализация
 bot.command('final', async (ctx) => {
   const id = ctx.chat.id;
   const s = S.get(id);
@@ -118,5 +110,4 @@ bot.command('final', async (ctx) => {
   }
 });
 
-console.log(`[bot] initialized with webhook path ${secretPath}`);
 module.exports = { bot, secretPath, webhook: bot.webhookCallback(secretPath) };
