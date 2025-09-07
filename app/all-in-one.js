@@ -1,18 +1,15 @@
-const app = require('./server');
-require('./worker');
+const app = require('./server');   // наш API без listen
+require('./worker');               // worker
 const { bot, secretPath, webhook } = require('./bot');
 const express = require('express');
 
-// JSON middleware
 app.use(express.json({ limit: '2mb' }));
 
-// Webhook
 if (webhook) {
   app.use(secretPath, webhook);
   console.log(`[bot] webhook bound on ${secretPath}`);
 }
 
-// Старт сервера
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`[all-in-one] server + worker + bot started`);
