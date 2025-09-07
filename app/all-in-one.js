@@ -1,14 +1,30 @@
-const app = require('./server');   // наш API без listen
-require('./worker');               // worker
-const { bot, secretPath, webhook } = require('./bot');
+const app = require('./server');
+require('./worker');
+const { bot, secretPath } = require('./bot');
 const express = require('express');
 
-app.use(express.json({ limit: '2mb' }));
+// УБЕРИ другие use() для вебхука, чтобы не было дублей!
 
-if (webhook) {
-  app.use(secretPath, webhook);
-  console.log(`[bot] webhook bound on ${secretPath}`);
-}
+// 1) Явный парсер тела ТОЛЬКО на этом пути
+app.use(secretPath, express.json({ limit: '2mb', type: '*/*' }));
+
+// 2) GET для быстрой проверки в браузере (должен отдавать 200, НЕ 404)
+app.get(secretPath, (req, res) => {
+  res.status(200).send('OK TG WEBHOOK');
+});
+
+// 3) Лог входящих апдейтов — поможет увидеть, что реально приходит
+app.post(secretPath, (req, res, next) => {
+  try {
+    console.log('[tg] inbound update:', JSON.stringify(req.body));
+  } catch (_) {}
+  next();
+});
+
+// 4) Сам обработчик Telegraf
+app.post(secretPath, (req, res) => {
+  return bot.webhookCallback(secretPath)(req, res);
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
@@ -16,6 +32,7 @@ app.listen(PORT, async () => {
   console.log(`Server listening on port ${PORT}`);
 
   if (bot) {
+    // ВСЕГДА перевыставляем вебхук на тот же путь
     await bot.telegram.setWebhook(`${process.env.BASE_URL}${secretPath}`);
     console.log(`[bot] webhook set to ${process.env.BASE_URL}${secretPath}`);
   }
