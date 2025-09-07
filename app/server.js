@@ -70,6 +70,7 @@ app.get('/health/cloudinary', async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+module.exports = app;
 
 // ---------- Pack API (без n8n) ----------
 
