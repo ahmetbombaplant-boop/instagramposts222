@@ -1,11 +1,9 @@
-// app/all-in-one.js
-require('./server');
+const app = require('./server');   // теперь только импорт
 require('./worker');
-const express = require('express');
 const { bot, secretPath, webhook } = require('./bot');
 
-const app = express();
-app.use(express.json({ limit: '2mb' }));
+app.use(require('express').json({ limit: '2mb' }));
+
 if (webhook) {
   app.use(secretPath, webhook);
   console.log(`[bot] webhook bound on ${secretPath}`);
