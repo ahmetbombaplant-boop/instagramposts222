@@ -7,17 +7,21 @@ const { Queue } = require('bullmq');
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
+// Redis
 const redis = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 redis.on('connect', () => console.log('[api] Redis connected'));
 redis.on('error', e => console.error('[api] Redis error', e?.message));
 
+// BullMQ
 const queueName = 'sigma-jobs';
 const queue = new Queue(queueName, { connection: redis });
 
-const jobKey       = id => `job:${id}`;
-const previewsKey  = id => `job:${id}:previews`;   // JSON [urls]
-const finalKey     = id => `job:${id}:final`;      // JSON { slides:[], caption:"" }
+// keys
+const jobKey      = id => `job:${id}`;
+const previewsKey = id => `job:${id}:previews`;  // JSON [urls]
+const finalKey    = id => `job:${id}:final`;     // JSON { slides:[], caption:"" }
 
+// helpers
 async function loadJob(id) {
   if (!id) return null;
   const raw = await redis.get(jobKey(id));
@@ -27,6 +31,7 @@ async function saveJob(id, payload) {
   await redis.set(jobKey(id), JSON.stringify(payload), 'EX', 60 * 60 * 24); // 24h
 }
 
+// health
 app.get('/', (req, res) => res.send('API работает!'));
 
 // создать задачу на поиск превью
@@ -76,7 +81,7 @@ app.get('/status', async (req, res) => {
   }
 });
 
-// получить массив из 15 превью
+// превью
 app.get('/previews', async (req, res) => {
   try {
     const { job_id } = req.query;
@@ -91,7 +96,7 @@ app.get('/previews', async (req, res) => {
   }
 });
 
-// запрос на финализацию: дергаем n8n и сразу возвращаем
+// финализация: отправляем выбранные ссылки в n8n и сразу отвечаем
 app.post('/finalize', async (req, res) => {
   try {
     const { job_id, picks = [], want_caption = true } = req.body || {};
@@ -102,7 +107,7 @@ app.post('/finalize', async (req, res) => {
     const previews = previewsRaw ? JSON.parse(previewsRaw) : [];
     if (!previews.length) return res.status(400).json({ ok: false, error: 'no previews yet' });
 
-    // нормализуем индексы 1..N
+    // валидируем индексы 1..N
     const uniq = [...new Set(
       picks.map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n >= 1 && n <= previews.length)
     )];
@@ -113,28 +118,31 @@ app.post('/finalize', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'no valid picks' });
     }
 
+    // апдейтим состояние
     job.state = 'finalizing';
     job.picks = uniq;
     await saveJob(job_id, job);
 
-    const callback = `${process.env.BASE_URL}/callback/n8n/final?token=${encodeURIComponent(process.env.N8N_CALLBACK_SECRET || 'change-me')}`;
-
+    // адрес вебхука n8n
     if (!process.env.N8N_FINALIZE_URL) {
       return res.status(500).json({ ok: false, error: 'N8N_FINALIZE_URL not set' });
     }
 
-    // отправляем в n8n задание на сбор финала
-    axios.post(process.env.N8N_FINALIZE_URL, {
+    // что отправляем в n8n
+    const payload = {
       job_id,
       character: job.character,
       topic: job.topic,
       style: job.style,
       slides: targetCount,
       want_caption,
-      picks: uniq,
-      selected,        // прямые ссылки на выбранные изображения
-      callback_url: callback
-    }).catch(e => console.error('[api] n8n finalize error:', e?.message));
+      picks: uniq,      // индексы
+      selected,         // прямые ссылки выбранных фото
+      callback_url: `${process.env.BASE_URL}/callback/n8n/final` // без токена, как просил
+    };
+
+    axios.post(process.env.N8N_FINALIZE_URL, payload)
+      .catch(e => console.error('[api] n8n finalize error:', e?.message));
 
     res.status(202).json({ ok: true, state: 'finalizing' });
   } catch (e) {
@@ -143,7 +151,7 @@ app.post('/finalize', async (req, res) => {
   }
 });
 
-// получить финальный результат (7 картинок + подпись)
+// результат
 app.get('/result', async (req, res) => {
   try {
     const { job_id } = req.query;
@@ -160,13 +168,9 @@ app.get('/result', async (req, res) => {
   }
 });
 
-// колбэк из n8n: сохраняем финал и завершаем джоб
+// колбэк из n8n (без проверки токена)
 app.post('/callback/n8n/final', async (req, res) => {
   try {
-    const token = (req.query.token || '').toString();
-    const secret = process.env.N8N_CALLBACK_SECRET || 'change-me';
-    if (!secret || token !== secret) return res.status(403).json({ ok: false, error: 'forbidden' });
-
     const { job_id, slides = [], caption = '' } = req.body || {};
     const job = await loadJob(job_id);
     if (!job) return res.status(404).json({ ok: false, error: 'not found' });
