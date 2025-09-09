@@ -2,21 +2,18 @@ services:
   - type: web
     name: sigma
     env: node
-    plan: free
     buildCommand: "npm install"
     startCommand: "node app/all-in-one.js"
     envVars:
-      - key: PORT
-        value: "3000"
-      - key: BASE_URL        # Впишешь после первого деплоя URL сервиса
+      - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: BASE_URL
+        value: https://sigma-your.onrender.com
       - key: REDIS_URL
-        sync: false
-      - key: CLOUDINARY_URL
         sync: false
       - key: SERPAPI_KEY
         sync: false
-      - key: TELEGRAM_BOT_TOKEN
+      - key: N8N_FINALIZE_URL
         sync: false
-      - key: N8N_FINALIZE_WEBHOOK
+      - key: N8N_CALLBACK_SECRET
         sync: false
