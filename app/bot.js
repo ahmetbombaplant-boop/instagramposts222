@@ -18,25 +18,51 @@ const apiGet  = (p)    => axios.get(`${BASE}${p}`).then(r => r.data);
 const bot = new Telegraf(token);
 const S = new Map();
 
+// разбор выбранных номеров
 function parsePicks(text) {
-  return [...new Set((text.match(/\d+/g) || []).map(x => parseInt(x, 10)).filter(n => n >= 1 && n <= 15))];
+  return [...new Set((text.match(/\d+/g) || [])
+    .map(x => parseInt(x, 10))
+    .filter(n => n >= 1 && n <= 15))];
 }
 
+// делим на группы по 9 (надёжнее, чем 10)
+function chunk(arr, n) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+// отправка превью только группами
 async function sendPreviews(ctx, previews) {
-  try {
-    // две группы: 10 + 5
-    const group1 = previews.slice(0, 10).map((url, i) => ({ type: 'photo', media: url, caption: `#${i + 1}` }));
-    if (group1.length) await ctx.replyWithMediaGroup(group1);
-    const group2 = previews.slice(10, 15).map((url, i) => ({ type: 'photo', media: url, caption: `#${i + 11}` }));
-    if (group2.length) await ctx.replyWithMediaGroup(group2);
-    await ctx.reply('Выбери 7: отправь номера через пробел или запятые. Пример: 1 3 5 7 9 11 13. Команда /final — завершить.');
-  } catch {
-    // запасной вариант — по одному
-    for (let i = 0; i < previews.length; i++) {
-      await ctx.replyWithPhoto(previews[i], { caption: `#${i + 1}` });
-    }
-    await ctx.reply('Выбери 7: отправь номера. /final — завершить.');
+  if (!previews?.length) {
+    await ctx.reply('Превью не найдены. Попробуй /start ещё раз.');
+    return;
   }
+  const groups = chunk(previews.slice(0, 15), 9);
+  let offset = 0;
+  for (const g of groups) {
+    const media = g.map((url, i) => ({
+      type: 'photo',
+      media: url,
+      caption: `#${offset + i + 1}`
+    }));
+    try {
+      await ctx.replyWithMediaGroup(media);
+    } catch (e) {
+      console.error('[bot] mediaGroup failed:', e?.message);
+      // если группа упала — удаляем последнюю и пробуем снова
+      for (let drop = 0; drop < g.length; drop++) {
+        const reduced = media.slice(0, media.length - drop - 1);
+        if (!reduced.length) break;
+        try {
+          await ctx.replyWithMediaGroup(reduced);
+          break;
+        } catch {}
+      }
+    }
+    offset += g.length;
+  }
+  await ctx.reply('Выбери 7: отправь номера через пробел или запятые. Пример: 1 3 5 7 9 11 13. Команда /final — завершить.');
 }
 
 bot.start(async ctx => {
@@ -77,7 +103,7 @@ bot.on('text', async ctx => {
       });
       s.job_id = job_id;
 
-      // опрос статуса до preview_ready
+      // опрос статуса
       const t = setInterval(async () => {
         try {
           const st = await apiGet(`/status?job_id=${job_id}`);
@@ -102,7 +128,7 @@ bot.on('text', async ctx => {
     }
   } else if (s.step === 'picking') {
     const picks = parsePicks(text);
-    if (!picks.length) return; // игнорируем посторонний текст
+    if (!picks.length) return;
     s.picks = [...new Set([...(s.picks || []), ...picks])].slice(0, 7);
     await ctx.reply(`Выбрано: ${s.picks.join(', ')} (${s.picks.length}/7). Команда /final — завершить.`);
   }
@@ -141,7 +167,7 @@ bot.command('final', async ctx => {
         }
       } catch {}
     }, 1500);
-  } catch (e) {
+  } catch {
     await ctx.reply('Ошибка при финализации.');
   }
 });
