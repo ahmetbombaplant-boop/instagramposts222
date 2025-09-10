@@ -216,4 +216,7 @@ app.get('/debug/job', async (req, res) => {
 app.get('/debug/final', async (req, res) => {
   const { job_id } = req.query;
   const raw = await redis.get(finalKey(job_id));
-  res.json({ final: raw ? JSON.par
+  res.json({ final: raw ? JSON.parse(raw) : null });
+});
+
+module.exports = app;
