@@ -1,9 +1,19 @@
 // app/all-in-one.js
 const { bot, secretPath } = require('./bot');
 const server = require('./server');
+require('./worker');
 
 const PORT = process.env.PORT || 3000;
 const BASE = (process.env.BASE_URL || '').replace(/\/+$/, '');
+
+// 1) Подключаем маршрут вебхука к Express
+if (bot) {
+  // Telegram шлёт POST, но пусть GET отвечает 200 для быстрой проверки из браузера
+  server.get(secretPath, (req, res) => res.status(200).send('tg webhook ok'));
+  server.post(secretPath, (req, res) => bot.webhookCallback(secretPath)(req, res));
+} else {
+  console.warn('[bot] bot instance is null — webhook route not attached');
+}
 
 async function attemptSetWebhook(retry = 0) {
   if (!bot) {
@@ -21,12 +31,11 @@ async function attemptSetWebhook(retry = 0) {
   } catch (e) {
     const msg = e?.message || String(e);
     console.warn(`[bot] setWebhook failed (try ${retry + 1}):`, msg);
-    // не валим процесс — пробуем повторить
     if (retry < 5) setTimeout(() => attemptSetWebhook(retry + 1), 8000);
   }
 }
 
-// Админ-эндпоинты для дебага вебхука
+// Админка для дебага вебхука
 server.get('/admin/webhook-info', async (req, res) => {
   try {
     if (!bot) return res.status(400).json({ ok: false, error: 'bot disabled' });
@@ -43,15 +52,15 @@ server.post('/admin/set-webhook', async (req, res) => {
     if (!BASE) return res.status(400).json({ ok: false, error: 'BASE_URL is empty' });
     const url = `${BASE}${secretPath}`;
     await bot.telegram.setWebhook(url, { drop_pending_updates: false });
-    res.json({ ok: true, url });
     console.log('[bot] webhook (manual) set to', url);
+    res.json({ ok: true, url });
   } catch (e) {
     res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 
 server.listen(PORT, async () => {
-  console.log(`Server listening on ${PORT}`);
-  // пробуем поставить вебхук, но без краша при ошибке
+  console.log(`Server listening on 3000`);
+  // 2) Ставим вебхук; при сбое — ретраи, без краша
   attemptSetWebhook();
 });
