@@ -97,9 +97,6 @@ app.get('/previews', async (req, res) => {
 // ---------- Finalize -> send to n8n ----------
 app.post('/finalize', async (req, res) => {
   try {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    console.log(`[final][${now()}] API /finalize called from ip=${ip} body=`, JSON.stringify(req.body));
-
     const { job_id, picks = [], want_caption = true } = req.body || {};
     const job = await loadJob(job_id);
     if (!job) {
@@ -107,21 +104,6 @@ app.post('/finalize', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'not found' });
     }
 
-    // 1) Разрешаем финал только после готовности превью
-    if (job.state !== 'preview_ready' && job.state !== 'picking') {
-      console.warn(`[final][${now()}] FINALIZE rejected: bad state="${job.state}" job=${job_id}`);
-      return res.status(409).json({ ok: false, error: `bad state: ${job.state}` });
-    }
-
-    // 2) Idempotency lock: не даём вызвать финал дважды
-    const lockKey = `job:${job_id}:finalize_lock`;
-    const gotLock = await redis.set(lockKey, '1', 'NX', 'EX', 600); // 10 минут
-    if (!gotLock) {
-      console.warn(`[final][${now()}] FINALIZE duplicate suppressed job=${job_id}`);
-      return res.status(202).json({ ok: true, state: job.state || 'finalizing' });
-    }
-
-    // 3) Проверяем превью и выбор
     const previewsRaw = await redis.get(previewsKey(job_id));
     const previews = previewsRaw ? JSON.parse(previewsRaw) : [];
     if (!previews.length) {
@@ -132,25 +114,16 @@ app.post('/finalize', async (req, res) => {
     const uniq = [...new Set(
       (picks || []).map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n >= 1 && n <= previews.length)
     )];
-
     const targetCount = job.slides || 7;
-    if (!uniq.length) {
-      console.warn(`[final][${now()}] FINALIZE empty picks job=${job_id}`);
-      return res.status(400).json({ ok: false, error: 'no picks' });
-    }
-    // если хочешь требовать ровно 7 — раскомментируй:
-    // if (uniq.length !== targetCount) return res.status(400).json({ ok:false, error:`need exactly ${targetCount} picks` });
-
     const selected = uniq.slice(0, targetCount).map(n => previews[n - 1]);
+
     if (!selected.length) {
-      console.warn(`[final][${now()}] FINALIZE no valid selection job=${job_id}`);
+      console.warn(`[final][${now()}] FINALIZE empty selection job=${job_id} picks=${JSON.stringify(picks)}`);
       return res.status(400).json({ ok: false, error: 'no valid picks' });
     }
 
-    // 4) Меняем стейт и логируем
     job.state = 'finalizing';
     job.picks = uniq;
-    job.finalize_requested_at = Date.now();
     await saveJob(job_id, job);
 
     if (!process.env.N8N_FINALIZE_URL) {
@@ -166,17 +139,22 @@ app.post('/finalize', async (req, res) => {
       slides: targetCount,
       want_caption,
       picks: uniq,
-      selected,
+      selected, // прямые ссылки выбранных фото
       callback_url: `${process.env.BASE_URL}/callback/n8n/final`
     };
 
-    console.log(`[final][${now()}] AUTHORIZED → N8N POST ${process.env.N8N_FINALIZE_URL}`);
+    console.log(`[final][${now()}] → N8N POST ${process.env.N8N_FINALIZE_URL}`);
     console.log(`[final][${now()}] payload:`, JSON.stringify({ ...payload, selected_count: selected.length, selected: undefined }, null, 2));
     console.log(`[final][${now()}] selected[0..2]:`, selected.slice(0, 3));
 
     axios.post(process.env.N8N_FINALIZE_URL, payload, { timeout: 30000 })
-      .then(r => console.log(`[final][${now()}] N8N accepted status=${r.status}`))
-      .catch(e => console.error(`[final][${now()}] N8N ERROR:`, e?.response?.data || e?.message));
+      .then(r => {
+        console.log(`[final][${now()}] N8N accepted status=${r.status}`);
+      })
+      .catch(e => {
+        const msg = e?.response?.data || e?.message;
+        console.error(`[final][${now()}] N8N ERROR:`, msg);
+      });
 
     res.status(202).json({ ok: true, state: 'finalizing' });
   } catch (e) {
