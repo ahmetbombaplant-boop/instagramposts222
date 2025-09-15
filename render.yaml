@@ -11,13 +11,15 @@ services:
         value: https://sigma-sc6d.onrender.com
       - key: TG_SECRET_PATH
         value: /tg-hook
-      - key: REDIS_URL
-        sync: false
       - key: SERPAPI_KEY
         sync: false
       - key: SERPAPI_SAFE
-        value: off
+        value: off     # или active
       - key: N8N_FINALIZE_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
       - key: PREVIEW_LIMIT
         value: "15"
