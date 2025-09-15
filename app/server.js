@@ -1,4 +1,3 @@
-// app/server.js
 const express = require('express');
 const IORedis = require('ioredis');
 const crypto = require('crypto');
@@ -19,8 +18,8 @@ const queue = new Queue(queueName, { connection: redis });
 
 // ---------- Keys ----------
 const jobKey      = id => `job:${id}`;
-const previewsKey = id => `job:${id}:previews`;
-const finalKey    = id => `job:${id}:final`;
+const previewsKey = id => `job:${id}:previews`;  // JSON [urls]
+const finalKey    = id => `job:${id}:final`;     // JSON { slides:[], caption:"" }
 
 // ---------- Helpers ----------
 async function loadJob(id) {
@@ -95,12 +94,9 @@ app.get('/previews', async (req, res) => {
   }
 });
 
-// ---------- Finalize ----------
+// ---------- Finalize -> send to n8n ----------
 app.post('/finalize', async (req, res) => {
   try {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    console.log(`[final][${now()}] API /finalize called from ip=${ip} body=`, JSON.stringify(req.body));
-
     const { job_id, picks = [], want_caption = true } = req.body || {};
     const job = await loadJob(job_id);
     if (!job) {
@@ -118,17 +114,16 @@ app.post('/finalize', async (req, res) => {
     const uniq = [...new Set(
       (picks || []).map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n >= 1 && n <= previews.length)
     )];
-
     const targetCount = job.slides || 7;
     const selected = uniq.slice(0, targetCount).map(n => previews[n - 1]);
+
     if (!selected.length) {
-      console.warn(`[final][${now()}] FINALIZE no valid selection job=${job_id}`);
+      console.warn(`[final][${now()}] FINALIZE empty selection job=${job_id} picks=${JSON.stringify(picks)}`);
       return res.status(400).json({ ok: false, error: 'no valid picks' });
     }
 
     job.state = 'finalizing';
     job.picks = uniq;
-    job.finalize_requested_at = Date.now();
     await saveJob(job_id, job);
 
     if (!process.env.N8N_FINALIZE_URL) {
@@ -144,16 +139,22 @@ app.post('/finalize', async (req, res) => {
       slides: targetCount,
       want_caption,
       picks: uniq,
-      selected,
+      selected, // прямые ссылки выбранных фото
       callback_url: `${process.env.BASE_URL}/callback/n8n/final`
     };
 
-    console.log(`[final][${now()}] AUTHORIZED → N8N POST ${process.env.N8N_FINALIZE_URL}`);
+    console.log(`[final][${now()}] → N8N POST ${process.env.N8N_FINALIZE_URL}`);
     console.log(`[final][${now()}] payload:`, JSON.stringify({ ...payload, selected_count: selected.length, selected: undefined }, null, 2));
+    console.log(`[final][${now()}] selected[0..2]:`, selected.slice(0, 3));
 
     axios.post(process.env.N8N_FINALIZE_URL, payload, { timeout: 30000 })
-      .then(r => console.log(`[final][${now()}] N8N accepted status=${r.status}`))
-      .catch(e => console.error(`[final][${now()}] N8N ERROR:`, e?.response?.data || e?.message));
+      .then(r => {
+        console.log(`[final][${now()}] N8N accepted status=${r.status}`);
+      })
+      .catch(e => {
+        const msg = e?.response?.data || e?.message;
+        console.error(`[final][${now()}] N8N ERROR:`, msg);
+      });
 
     res.status(202).json({ ok: true, state: 'finalizing' });
   } catch (e) {
@@ -189,17 +190,33 @@ app.post('/callback/n8n/final', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'not found' });
     }
 
-    console.log(`[final][${now()}] ← N8N CALLBACK job=${job_id} slides=${slides.length}`);
+    console.log(`[final][${now()}] ← N8N CALLBACK job=${job_id} slides=${slides.length} caption_len=${(caption||'').length}`);
+    console.log(`[final][${now()}] sample slides[0..2]:`, slides.slice(0, 3));
+
     await redis.set(finalKey(job_id), JSON.stringify({ slides, caption }), 'EX', 60 * 60 * 24);
     job.state = 'done';
     await saveJob(job_id, job);
 
     console.log(`[final][${now()}] SAVED final to Redis job=${job_id}`);
+
     res.json({ ok: true });
   } catch (e) {
     console.error('[api] /callback/n8n/final', e);
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// ---------- Debug helpers ----------
+app.get('/debug/job', async (req, res) => {
+  const { job_id } = req.query;
+  const job = await loadJob(job_id);
+  res.json({ job });
+});
+
+app.get('/debug/final', async (req, res) => {
+  const { job_id } = req.query;
+  const raw = await redis.get(finalKey(job_id));
+  res.json({ final: raw ? JSON.parse(raw) : null });
 });
 
 module.exports = app;
