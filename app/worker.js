@@ -93,18 +93,18 @@ async function fetchPreviewsSerp({ character, topic, style }) {
   .filter(Boolean);
 
   const out = [];
-  const seen = new Set();
-  for (const url of items) {
-    const u = String(url);
-    if (!/^https?:\/\//i.test(u)) continue;
-    if (u.endsWith('.svg')) continue;
-    if (seen.has(u)) continue;
-    seen.add(u);
-    out.push(u);
-    if (out.length >= PREVIEW_LIMIT) break;
-  }
-  return out;
+const seen = new Set();
+for (const url of items) {
+  const u = String(url);
+  if (!/^https?:\/\//i.test(u)) continue;
+  if (u.endsWith('.svg')) continue;
+  if (seen.has(u)) continue;
+  seen.add(u);
+  out.push(u);
+  if (out.length >= PREVIEW_LIMIT) break;
 }
+return out;
+
 
 new Worker(
   queueName,
