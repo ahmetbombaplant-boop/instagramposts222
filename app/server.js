@@ -2,11 +2,26 @@
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
-const { setRaw, getRaw } = require('./kv');
+const { Redis } = require('@upstash/redis');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
+// ---------- Redis через REST ----------
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+async function setRaw(key, val, ttl) {
+  return ttl
+    ? redis.set(key, val, { ex: ttl })
+    : redis.set(key, val);
+}
+async function getRaw(key) {
+  return redis.get(key);
+}
+
+// ---------- Константы ----------
 const PREVIEW_LIMIT = parseInt(process.env.PREVIEW_LIMIT || '15', 10);
 const now = () => new Date().toISOString();
 
@@ -22,7 +37,7 @@ async function saveJob(id, obj) {
   await setRaw(jobKey(id), JSON.stringify(obj), 86400);
 }
 
-// ---- SerpAPI ----
+// ---------- SerpAPI ----------
 async function fetchPreviewsSerp({ character, topic, style }) {
   const key = process.env.SERPAPI_KEY;
   if (!key) throw new Error('SERPAPI_KEY not set');
@@ -59,10 +74,9 @@ async function fetchPreviewsSerp({ character, topic, style }) {
   return out;
 }
 
-// ---- Routes ----
+// ---------- Routes ----------
 app.get('/', (req, res) => res.send('API работает!'));
 
-// create + сразу собрать превью
 app.post('/create-pack', async (req, res) => {
   try {
     const { character, topic, style = 'default', slides = 7, chat_id } = req.body || {};
@@ -123,7 +137,6 @@ app.get('/previews', async (req, res) => {
   }
 });
 
-// finalize -> n8n
 app.post('/finalize', async (req, res) => {
   try {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -198,7 +211,6 @@ app.get('/result', async (req, res) => {
   }
 });
 
-// n8n callback
 app.post('/callback/n8n/final', async (req, res) => {
   try {
     const { job_id, slides = [], caption = '' } = req.body || {};
