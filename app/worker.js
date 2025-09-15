@@ -89,8 +89,8 @@ async function fetchPreviewsSerp({ character, topic, style }) {
 
   const { data } = await axios.get('https://serpapi.com/search.json', { params, timeout: 20000 });
   const items = (data?.images_results || [])
-    .map(x => x?.original || x?.thumbnail || x?.source)
-    .filter(Boolean);
+  .map(x => x?.original) // БЕРЁМ ТОЛЬКО ORIGINAL
+  .filter(Boolean);
 
   const out = [];
   const seen = new Set();
