@@ -8,12 +8,18 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: BASE_URL
-        value: https://sigma-your.onrender.com
+        value: https://sigma-sc6d.onrender.com
+      - key: TG_SECRET_PATH
+        value: /tg-hook
       - key: REDIS_URL
         sync: false
       - key: SERPAPI_KEY
         sync: false
+      - key: SERPAPI_SAFE
+        value: off
       - key: N8N_FINALIZE_URL
         sync: false
-      - key: N8N_CALLBACK_SECRET
-        sync: false
+      - key: PREVIEW_LIMIT
+        value: "15"
+      - key: PICKS_TARGET
+        value: "7"
